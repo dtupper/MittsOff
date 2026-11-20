@@ -10,9 +10,19 @@ lua tests/run.lua
 
 It prints the pass and fail counts and exits non-zero on failure. The game runs Lua 5.1, so `Rules.lua`, `Core.lua` and `Options.lua` must stay 5.1 compatible. CI checks this with `luac5.1 -p` on every file the TOC loads.
 
+## Trying it in game
+
+Keep the repo outside the game folder and copy it in when you want to test:
+
+```
+./deploy.ps1
+```
+
+This replaces `Interface\AddOns\MittsOff` with the TOC and the files it lists, and stamps the version from `git describe`. Pass `-AddOns <path>` or set `MITTSOFF_ADDONS` if your game is installed somewhere else. It refuses to overwrite a target that is itself a git checkout.
+
 ## Builds and releases
 
-Packages are built with [BigWigsMods/packager](https://github.com/BigWigsMods/packager). `.pkgmeta` leaves out `tests`, `README.md`, `CONTRIBUTING.md` and all dotfiles, so the zip holds a single `MittsOff/` folder with the TOC, the Lua files and a generated `CHANGELOG.md`. The `@project-version@` token in the TOC is replaced with the tag name, or with something like `v0.1.0-3-gabc1234` for untagged commits. A plain git checkout shows the raw token as its version in game, which is harmless.
+Packages are built with [BigWigsMods/packager](https://github.com/BigWigsMods/packager). `.pkgmeta` leaves out `tests`, `README.md`, `CONTRIBUTING.md`, `deploy.ps1` and all dotfiles, so the zip holds a single `MittsOff/` folder with the TOC, the Lua files and a generated `CHANGELOG.md`. The `@project-version@` token in the TOC is replaced with the tag name, or with something like `v0.1.0-3-gabc1234` for untagged commits. A plain git checkout shows the raw token as its version in game, which is harmless.
 
 Every push to any branch and every pull request runs the tests, then builds an unstable zip and attaches it to the workflow run as an artifact.
 

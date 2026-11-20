@@ -5,3 +5,6 @@ ignore:
   - tests
   - README.md
   - CONTRIBUTING.md
+  - deploy.ps1
+  - AGENTS.md
+  - CLAUDE.md
