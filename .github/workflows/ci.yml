@@ -75,8 +75,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          # The download step may hand back the zip itself or its unpacked contents.
+          ls -R dist
           zip=$(find dist -name '*.zip' -print -quit)
-          cp "$zip" MittsOff-unstable.zip
+          if [ -n "$zip" ]; then
+            cp "$zip" MittsOff-unstable.zip
+          elif [ -d dist/MittsOff ]; then
+            (cd dist && zip -qr ../MittsOff-unstable.zip MittsOff)
+          else
+            echo "::error::No package found in the downloaded artifact."
+            exit 1
+          fi
+          unzip -l MittsOff-unstable.zip
           notes="Automatic build of main at ${GITHUB_SHA::7}. Not a release and may be broken."
 
           gh api -X PATCH "repos/$GH_REPO/git/refs/tags/unstable" -f sha="$GITHUB_SHA" -F force=true >/dev/null \
