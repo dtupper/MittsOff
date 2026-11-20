@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/tests.yml
+
+  github:
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The rolling "unstable" tag would otherwise confuse version and changelog detection.
+      - name: Drop the unstable tag locally
+        run: git tag -d unstable || true
+
+      # Only the GitHub token is passed, so this step uploads to GitHub and nowhere else.
+      - name: Build package and create GitHub release
+        uses: BigWigsMods/packager@01e8631a69c69d7654c788d152630d5fed9e3812 # v2.7.0
+        with:
+          args: -n "{package-name}-{project-version}:{project-version}"
+          pandoc: false
+        env:
+          GH_API_TOKEN: ${{ github.token }}
+
+  curseforge:
+    needs: github
+    runs-on: ubuntu-24.04
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      # Unconfirmed: whether CurseForge accepts Forever builds under the version the packager
+      # derives from "## Interface: 16001" (game version 1.60.1, version type 88568).
+      # If an upload is rejected or tagged with the wrong game version, set the exact
+      # CurseForge game version name here (for example "1.60.1"); it is passed to the packager as -g.
+      CF_GAME_VERSION: ''
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check CurseForge settings
+        id: check
+        run: |
+          project_id=$(sed -n 's/^## X-Curse-Project-ID:[[:space:]]*\([0-9][0-9]*\).*$/\1/p' MittsOff.toc | head -n 1)
+          missing=""
+          [ -n "$CF_API_TOKEN" ] || missing="the CF_API_TOKEN secret"
+          if [ -z "$project_id" ]; then
+            missing="${missing:+$missing and }an X-Curse-Project-ID line in MittsOff.toc"
+          fi
+          if [ -n "$missing" ]; then
+            echo "::notice title=CurseForge upload skipped::Missing $missing. See CONTRIBUTING.md."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Uploading to CurseForge project $project_id."
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Drop the unstable tag locally
+        if: steps.check.outputs.enabled == 'true'
+        run: git tag -d unstable || true
+
+      - name: Set packager arguments
+        if: steps.check.outputs.enabled == 'true'
+        id: args
+        run: |
+          args='-n "{package-name}-{project-version}:{project-version}"'
+          if [ -n "$CF_GAME_VERSION" ]; then
+            args="$args -g $CF_GAME_VERSION"
+          fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+
+      # Only the CurseForge token is passed, so this step uploads to CurseForge and nowhere else.
+      - name: Build package and upload to CurseForge
+        if: steps.check.outputs.enabled == 'true'
+        uses: BigWigsMods/packager@01e8631a69c69d7654c788d152630d5fed9e3812 # v2.7.0
+        with:
+          args: ${{ steps.args.outputs.args }}
+          pandoc: false

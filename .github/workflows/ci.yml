@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/tests.yml
+
+  # Builds an unstable package for every commit and keeps it as a workflow artifact.
+  package:
+    needs: test
+    runs-on: ubuntu-24.04
+    outputs:
+      zip: ${{ steps.find.outputs.zip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The rolling "unstable" tag would otherwise become the version name.
+      - name: Drop the unstable tag locally
+        run: git tag -d unstable || true
+
+      - name: Build package
+        uses: BigWigsMods/packager@01e8631a69c69d7654c788d152630d5fed9e3812 # v2.7.0
+        with:
+          args: -d -n "{package-name}-{project-version}:{project-version}"
+          pandoc: false
+
+      # The packager skips branch builds when HEAD already has a tag; the tag build covers that commit.
+      - name: Find package
+        id: find
+        run: |
+          zip=$(find .release -maxdepth 1 -name '*.zip' -printf '%f\n' -quit 2>/dev/null || true)
+          if [ -z "$zip" ]; then
+            echo "::notice::No package built for this commit."
+          else
+            unzip -l ".release/$zip"
+          fi
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        if: steps.find.outputs.zip != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: .release/${{ steps.find.outputs.zip }}
+          archive: false
+          retention-days: 30
+
+  # Pushes to main also refresh a single rolling prerelease named "unstable".
+  unstable:
+    needs: package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.package.outputs.zip != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: unstable-release
+      cancel-in-progress: true
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.package.outputs.zip }}
+          path: dist
+
+      - name: Update the unstable prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          zip=$(find dist -name '*.zip' -print -quit)
+          cp "$zip" MittsOff-unstable.zip
+          notes="Automatic build of main at ${GITHUB_SHA::7}. Not a release and may be broken."
+
+          gh api -X PATCH "repos/$GH_REPO/git/refs/tags/unstable" -f sha="$GITHUB_SHA" -F force=true >/dev/null \
+            || gh api -X POST "repos/$GH_REPO/git/refs" -f ref=refs/tags/unstable -f sha="$GITHUB_SHA" >/dev/null
+
+          if gh release view unstable >/dev/null 2>&1; then
+            gh release edit unstable --prerelease --latest=false --title "Unstable build" --notes "$notes"
+          else
+            gh release create unstable --prerelease --latest=false --title "Unstable build" --notes "$notes" --verify-tag
+          fi
+          gh release upload unstable MittsOff-unstable.zip --clobber

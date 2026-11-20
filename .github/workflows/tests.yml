@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Lua 5.1 and 5.4
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.1 lua5.4
+
+      # The game runs Lua 5.1, so every file the TOC loads must parse as 5.1.
+      - name: Check shipped files with luac 5.1
+        run: |
+          files=$(grep -E '^[^#[:space:]][^[:space:]]*\.lua$' MittsOff.toc | tr -d '\r')
+          echo "$files"
+          luac5.1 -p $files
+
+      # The test stub needs Lua 5.2 or later.
+      - name: Run tests
+        run: lua5.4 tests/run.lua

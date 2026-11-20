@@ -1,0 +1,7 @@
+package-as: MittsOff
+
+# Dotfiles and dot folders (.github, .pkgmeta, ...) are always left out by the packager.
+ignore:
+  - tests
+  - README.md
+  - CONTRIBUTING.md

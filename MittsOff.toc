@@ -1,0 +1,12 @@
+## Interface: 16001
+## Title: Mitts Off!
+## Notes: Warns about loot competition before you invite someone
+## Author: dtupper
+## Version: @project-version@
+## SavedVariables: MittsOffDB
+## SavedVariablesPerCharacter: MittsOffCharDB
+# ## X-Curse-Project-ID: <CurseForge project ID>
+
+Rules.lua
+Core.lua
+Options.lua

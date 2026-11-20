@@ -1,0 +1,14 @@
+# Packager output
+.release/
+*.zip
+
+# Local packager secrets
+.env
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
