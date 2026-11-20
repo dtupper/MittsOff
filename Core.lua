@@ -333,10 +333,12 @@ end
 -- Every spec of every class as a hypothetical invite into the current group,
 -- for the settings panel: { class, build, single, conflict } per row, where
 -- single marks a class with one build and conflict is the strongest or nil.
+D.CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
+
 function D.preview()
 	local rows = {}
 	local level = unitLevel("player")
-	for _, class in ipairs({ "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }) do
+	for _, class in ipairs(D.CLASSES) do
 		local builds = R.BUILDS[class]
 		for _, build in ipairs(builds) do
 			local found = D.check({ { name = "They", class = class, level = level, build = build.key } })
@@ -344,6 +346,19 @@ function D.preview()
 		end
 	end
 	return rows
+end
+
+-- Conflicts a player of this class would bring into the group. Role is TANK,
+-- HEALER, DAMAGER or nil for an unknown spec.
+function D.hypothetical(class, role)
+	return D.check({ { name = "They", class = class, level = unitLevel("player"), roles = role and { [role] = true } or nil } })
+end
+
+-- The player's leading talent tree, in a sentence.
+function D.treeText()
+	local tree, treeName, spent = D.myTree()
+	if tree then return ("Most talent points: %s (%d), tree %d."):format(treeName or "?", spent, tree) end
+	return "No single talent tree leads, so your party role decides."
 end
 
 ---------------------------------------------------------------------------
@@ -367,12 +382,7 @@ end
 local function status()
 	local me = D.me()
 	say(("You are gearing as %s%s."):format(buildNames(R.mainBuilds(me)), me.build and " (set by you)" or ""))
-	local tree, treeName, spent = D.myTree()
-	if tree then
-		say(("Most talent points: %s (%d), tree %d."):format(treeName or "?", spent, tree))
-	else
-		say("No single talent tree leads, so your party role decides.")
-	end
+	say(D.treeText())
 	for _, name in ipairs({ "strangers", "offspec", "whispers" }) do
 		local toggle = TOGGLES[name]
 		say(("/mittsoff %s: %s"):format(name, MittsOffDB[toggle.field] and toggle.on or toggle.off))
@@ -406,11 +416,11 @@ function D.slash(input)
 		end
 		say(("You are gearing as %s."):format(buildNames(R.mainBuilds(D.me()))))
 	elseif command == "check" and R.BUILDS[arg1:upper()] then
-		local role = ROLE_ARGS[arg2]
-		local candidate = { name = "They", class = arg1:upper(), level = unitLevel("player"), roles = role and { [role] = true } or nil }
-		local found = D.check({ candidate })
+		local found = D.hypothetical(arg1:upper(), ROLE_ARGS[arg2])
 		if #found == 0 then say("No competition.") end
 		report(found, 10)
+	elseif command == "check" and arg1 == "" and D.openSettings and D.openSettings("check") then
+		return
 	elseif command == "" and D.openSettings and D.openSettings() then
 		return
 	else

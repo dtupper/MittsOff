@@ -38,7 +38,7 @@ Type `/mittsoff` to open the panel, or find Mitts Off! under AddOns in the game'
 
 The left side holds the options, and the Defaults button restores them all.
 
-- **Your spec.** The addon reads your talents and your party role to decide what you gear for. "Automatic" shows what it detected. Pick a spec from the list to override it for this character.
+- **Your spec.** The addon reads your talents and your party role to decide what you gear for. "Automatic" shows what it detected, and the line below names your leading talent tree. Pick a spec from the list to override it for this character.
 - **Who rolls on what.**
   - "Hybrids roll for their other specs"
   - "Casters and healers share spell power gear"
@@ -58,6 +58,8 @@ Everything except the lighter armor option is on by default.
 
 The right side, "Who competes with your group", lists every spec of every class as if that player were invited into your current group. Each row has a coloured dot and a few words on what is at stake, and a grey dot means no conflict. Hover over a row to read the full sentence. The list changes as you tick boxes, so you can see the effect of a rule before you rely on it.
 
+"Check a player", under Mitts Off! in the AddOns list, takes a class and a role and lists every warning that player would get, in full.
+
 ## Slash commands
 
 `/mittsoff` and `/mitts` are the same command.
@@ -70,6 +72,7 @@ The right side, "Who competes with your group", lists every spec of every class 
 | `/mittsoff whispers` | Switches whisper checks on or off. |
 | `/mittsoff spec auto` | Detects your spec from your talents and party role. |
 | `/mittsoff spec <name>` | Sets your spec by hand, for example `balance`, `cat`, `bear` or `resto` for a druid. `/mittsoff status` lists the names for your class. |
+| `/mittsoff check` | Opens the "Check a player" page. |
 | `/mittsoff check <class> [tank, healer or dps]` | Shows the warnings a hypothetical player of that class would get, for example `/mittsoff check rogue` or `/mittsoff check mage dps`. |
 | `/mittsoff status` | Prints your detected spec, your leading talent tree, the current toggles and the spec names for your class. |
 

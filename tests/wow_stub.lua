@@ -166,12 +166,24 @@ return function()
 	CreateFrame = function() return newFrame() end
 	SlashCmdList = {}
 	RAID_CLASS_COLORS, LOCALIZED_CLASS_NAMES_MALE = nil, { DRUID = "Druid", ROGUE = "Rogue", WARRIOR = "Warrior" }
+	-- Categories are keyed by name; opening one shows its panel.
+	world.categories = {}
+	local function category(panel, name)
+		world.categories[name] = { panel = panel, name = name, GetID = function() return name end }
+		return world.categories[name]
+	end
 	Settings = {
-		RegisterCanvasLayoutCategory = function(panel, name) return { panel = panel, name = name, GetID = function() return name end } end,
-		RegisterAddOnCategory = function(category) world.category = category end,
+		RegisterCanvasLayoutCategory = category,
+		RegisterCanvasLayoutSubcategory = function(parent, panel, name)
+			local sub = category(panel, name)
+			sub.parent = parent
+			return sub
+		end,
+		RegisterAddOnCategory = function(added) world.category = added end,
 		OpenToCategory = function(id)
 			world.opened = id
-			world.category.panel.scripts.OnShow(world.category.panel)
+			local panel = world.categories[id].panel
+			panel.scripts.OnShow(panel)
 		end,
 	}
 	MittsOffDB, MittsOffCharDB = nil, nil

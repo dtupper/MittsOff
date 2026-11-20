@@ -1,5 +1,6 @@
 -- Settings panel: the tunable rules on the left, and on the right every spec
 -- of every class as a hypothetical invite, recolored live as rules change.
+-- A subpage checks one class and role, like /mittsoff check.
 
 local _, ns = ...
 local R, D = ns.Rules, ns.MittsOff
@@ -35,7 +36,7 @@ panel.name = TITLE
 panel:Hide()
 D.panel = panel
 
-local checks, rows, dropdown = {}, {}, nil
+local checks, rows, dropdown, talents = {}, {}, nil, nil
 D.checks, D.rows = checks, rows
 
 local function heading(text, x, y)
@@ -60,6 +61,7 @@ local function refresh()
 		check:SetChecked(MittsOffDB[key] and true or false)
 	end
 	if dropdown and dropdown.GenerateMenu then dropdown:GenerateMenu() end
+	if talents then talents:SetText(D.treeText()) end
 	for index, data in ipairs(D.preview()) do
 		local row = rows[index]
 		local conflict = data.conflict
@@ -152,7 +154,12 @@ local function build()
 			end)
 		end
 	end)
-	y = y - 40
+	talents = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	D.talentsText = talents
+	talents:SetPoint("TOPLEFT", LEFT, y - 32)
+	talents:SetWidth(COLUMN)
+	talents:SetJustifyH("LEFT")
+	y = y - 58
 
 	for _, section in ipairs(SECTIONS) do
 		y = heading(section.title, LEFT, y)
@@ -185,15 +192,113 @@ panel:SetScript("OnShow", function()
 	refresh()
 end)
 
+---------------------------------------------------------------------------
+-- Check a player: what one hypothetical invite would bring into the group,
+-- the panel form of /mittsoff check.
+
+local CHECK_TITLE = "Check a player"
+local CHECK_ROLES = {
+	{ label = "Any role" },
+	{ role = "TANK", label = "Tank" },
+	{ role = "HEALER", label = "Healer" },
+	{ role = "DAMAGER", label = "Damage" },
+}
+local CHECK_LINES, CHECK_WIDTH = 10, 590
+
+local checkPanel = CreateFrame("Frame")
+checkPanel.name = CHECK_TITLE
+checkPanel:Hide()
+D.checkPanel = checkPanel
+
+local picked, lines, classMenu, roleMenu = { class = D.CLASSES[1] }, {}, nil, nil
+D.checkPicked, D.checkLines = picked, lines
+
+local function className(class)
+	return LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[class] or class
+end
+
+local function refreshCheck()
+	if classMenu and classMenu.GenerateMenu then classMenu:GenerateMenu() end
+	if roleMenu and roleMenu.GenerateMenu then roleMenu:GenerateMenu() end
+	local found = D.hypothetical(picked.class, picked.role)
+	for i, line in ipairs(lines) do
+		local conflict = found[i]
+		line:SetText(conflict and ("|c%s%s|r"):format(D.COLORS[conflict.severity], R.describe(conflict)) or "")
+	end
+	if #found == 0 then lines[1]:SetText("No competition.") end
+end
+D.refreshCheck = refreshCheck
+
+local function buildCheck()
+	local title = checkPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+	title:SetPoint("TOPLEFT", LEFT, -16)
+	title:SetText(CHECK_TITLE)
+
+	classMenu = CreateFrame("DropdownButton", nil, checkPanel, "WowStyle1DropdownTemplate")
+	D.checkClassMenu = classMenu
+	classMenu:SetWidth(180)
+	classMenu:SetPoint("TOPLEFT", LEFT, -58)
+	classMenu:SetupMenu(function(_, root)
+		for _, class in ipairs(D.CLASSES) do
+			root:CreateRadio(className(class), function() return picked.class == class end, function()
+				picked.class = class
+				refreshCheck()
+			end)
+		end
+	end)
+
+	roleMenu = CreateFrame("DropdownButton", nil, checkPanel, "WowStyle1DropdownTemplate")
+	D.checkRoleMenu = roleMenu
+	roleMenu:SetWidth(140)
+	roleMenu:SetPoint("LEFT", classMenu, "RIGHT", 12, 0)
+	roleMenu:SetupMenu(function(_, root)
+		for _, option in ipairs(CHECK_ROLES) do
+			root:CreateRadio(option.label, function() return picked.role == option.role end, function()
+				picked.role = option.role
+				refreshCheck()
+			end)
+		end
+	end)
+
+	local y = -104
+	for i = 1, CHECK_LINES do
+		local line = checkPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		line:SetWidth(CHECK_WIDTH)
+		line:SetJustifyH("LEFT")
+		if i == 1 then
+			line:SetPoint("TOPLEFT", LEFT, y)
+		else
+			line:SetPoint("TOPLEFT", lines[i - 1], "BOTTOMLEFT", 0, -6)
+		end
+		lines[i] = line
+	end
+end
+
+checkPanel:SetScript("OnShow", function()
+	if not checkPanel.built then
+		checkPanel.built = true
+		buildCheck()
+	end
+	refreshCheck()
+end)
+
+---------------------------------------------------------------------------
+-- Registration
+
 function D.registerSettings()
 	if D.category or not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then return end
 	D.category = Settings.RegisterCanvasLayoutCategory(panel, TITLE)
+	if Settings.RegisterCanvasLayoutSubcategory then
+		D.checkCategory = Settings.RegisterCanvasLayoutSubcategory(D.category, checkPanel, CHECK_TITLE)
+	end
 	Settings.RegisterAddOnCategory(D.category)
 end
 
--- Opens the panel. Returns false when the client cannot, so the caller can fall back to chat.
-function D.openSettings()
-	if not (D.category and Settings and Settings.OpenToCategory) then return false end
-	Settings.OpenToCategory(D.category:GetID())
+-- Opens the panel, or the check page when page is "check". Returns false when
+-- the client cannot, so the caller can fall back to chat.
+function D.openSettings(page)
+	local category = page == "check" and D.checkCategory or D.category
+	if not (category and Settings and Settings.OpenToCategory) then return false end
+	Settings.OpenToCategory(category:GetID())
 	return true
 end

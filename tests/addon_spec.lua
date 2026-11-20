@@ -447,6 +447,50 @@ test("the spec dropdown overrides detection and Defaults restores everything", f
 	eq(previewRow(world, "Rogue"), { RED, "leather physical" })
 end)
 
+test("the settings panel shows the leading talent tree", function()
+	local world = boot(feral)
+	SlashCmdList.MITTSOFF("")
+	eq(world.D.talentsText.text, "Most talent points: Second (30), tree 2.")
+	world.player.points = { 10, 10, 0 }
+	world.D.refreshSettings()
+	eq(world.D.talentsText.text, "No single talent tree leads, so your party role decides.")
+end)
+
+-- The check page's lines, without colour codes, up to the first empty one.
+local function checkLines(world)
+	local out = {}
+	for _, line in ipairs(world.D.checkLines) do
+		if line.text == "" then break end
+		out[#out + 1] = (line.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+	end
+	return out
+end
+
+local function pick(menu, label)
+	for _, radio in ipairs(menu.menu) do
+		if radio.text == label then return radio.select() end
+	end
+	error("no option " .. label)
+end
+
+test("the check page answers like /mittsoff check", function()
+	local world = boot(feral)
+	SlashCmdList.MITTSOFF("check")
+	eq(world.opened, "Check a player")
+	eq(world.category.name, "Mitts Off!")
+	eq(world.categories["Check a player"].parent, world.category)
+	pick(world.D.checkClassMenu, "Rogue")
+	eq(checkLines(world), { "They will compete with you for leather physical gear" })
+	pick(world.D.checkClassMenu, "MAGE")
+	pick(world.D.checkRoleMenu, "Damage")
+	eq(checkLines(world), { "No competition." })
+	eq(world.D.checkRoleMenu.menu[4].isSelected(), true)
+	eq(world.chat, {})
+	world.chat = {}
+	SlashCmdList.MITTSOFF("check rogue")
+	eq(world.chat, { "Mitts Off! They will compete with you for leather physical gear" })
+end)
+
 test("finder and invite warnings can be switched off", function()
 	local world = boot(feral)
 	world.results[1] = solo("Stab", "ROGUE", { dps = true })

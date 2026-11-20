@@ -8,7 +8,7 @@ Mitts Off! is a World of Warcraft addon for the WoW Forever client. It warns, wi
 | --- | --- |
 | `Rules.lua` | Pure rules. No game API. Builds per class, armor by level, `compare`, `evaluate`, `describe`, `brief`, whisper `hints`, and `R.DEFAULTS` for every tunable rule. |
 | `Core.lua` | Game side. Profiles for the player, party and candidates; friend and guild lookup; group finder hooks; whisper and invite warnings; slash commands; saved settings. |
-| `Options.lua` | Settings panel (canvas category). Options on the left, live preview of every class spec on the right. |
+| `Options.lua` | Settings panel (canvas category). Options on the left, live preview of every class spec on the right. A "Check a player" subcategory mirrors `/mittsoff check`. |
 | `tests/` | `run.lua` runs `rules_spec.lua` and `addon_spec.lua`. `wow_stub.lua` fakes the game API. `harness.lua` is the tiny test framework. |
 | `deploy.ps1` | Copies the TOC and the files it lists into the game's AddOns folder. |
 | `.github/workflows/` | `tests.yml` (reusable), `ci.yml` (every push and PR), `release.yml` (tags starting with `v`). |
@@ -51,7 +51,7 @@ WoW Forever is Classic gameplay (nine classes, level 60, three talent trees) on 
 
 ## Not yet verified in game
 
-- The settings panel has never been seen rendered. Column widths assume a canvas about 630 wide.
+- The owner has seen the settings panel and its "Check a player" subpage in game once. Column widths assume a canvas about 630 wide.
 - The orange dot is the yellow indicator texture tinted. It may read too close to yellow.
 - The dot sits at the top right of a listing row and may overlap other elements.
 - Tree detection once read a feral druid as restoration. It now sorts by `orderIndex`; the owner has not confirmed the fix. `/mittsoff status` prints the tree name the client reports.
@@ -59,12 +59,13 @@ WoW Forever is Classic gameplay (nine classes, level 60, three talent trees) on 
 
 ## Releases
 
-- No version has been tagged. The owner asked to hold the first tag until the addon has been tried in game. Do not tag without being asked.
-- The tag flow and the CurseForge upload have never run on GitHub. CurseForge stays off until `CF_API_TOKEN` and the TOC project ID exist; see `CONTRIBUTING.md`.
+- `v0.1.0` is the first release, tagged after the owner tried the addon in game. Do not tag without being asked.
+- CurseForge upload has never run. CurseForge stays off until `CF_API_TOKEN` and the TOC project ID exist; see `CONTRIBUTING.md`.
 - The rolling `unstable` tag belongs to CI.
 
 ## Conventions
 
+- Every slash command has a panel equivalent. A new command needs a control in `Options.lua` too.
 - `README.md` is for players only. CI, releases, CurseForge and anything for developers go in `CONTRIBUTING.md`.
 - The README has two screenshot placeholders, marked with HTML comments, waiting on images from the owner. Its installation section has no download link yet.
 - Writing, in docs and in the UI: plain and brief, sentence-case headings, no em dashes, no taglines or helper text, no fragment pairs.
