@@ -6,9 +6,9 @@ Mitts Off! is a World of Warcraft addon for the WoW Forever client. It warns, wi
 
 | Path | Role |
 | --- | --- |
-| `Rules.lua` | Pure rules. No game API. Builds per class, armor by level, `compare`, `evaluate`, `describe`, `brief`, whisper `hints`, and `R.DEFAULTS` for every tunable rule. |
-| `Core.lua` | Game side. Profiles for the player, party and candidates; friend and guild lookup; group finder hooks; whisper and invite warnings; slash commands; saved settings. |
-| `Options.lua` | Settings panel (canvas category). Options on the left, live preview of every class spec on the right. A "Check a player" subcategory mirrors `/mittsoff check`. |
+| `Rules.lua` | Pure rules. No game API. Builds per class, armor by level, `compare`, `evaluate`, `reasonText`, `describe`, `brief`, whisper `hints`, and `R.DEFAULTS` for every tunable rule. |
+| `Core.lua` | Game side. Profiles for the player, party (with session overrides and `seen` carryover) and candidates; friend and guild lookup; group finder hooks, badges, private tooltip and quick dropdown; whisper, Battle.net whisper and invite warnings; slash commands; saved settings. |
+| `Options.lua` | Settings panel (canvas category). Options with tooltips on the left, live preview of every class spec plus current group on the right. A "Check a player" subcategory mirrors `/mittsoff check`. |
 | `tests/` | `run.lua` runs `rules_spec.lua` and `addon_spec.lua`. `wow_stub.lua` fakes the game API. `harness.lua` is the tiny test framework. |
 | `deploy.ps1` | Copies the TOC and the files it lists into the game's AddOns folder. |
 | `.github/workflows/` | `tests.yml` (reusable), `ci.yml` (every push and PR), `release.yml` (tags starting with `v`). |
@@ -25,9 +25,13 @@ Each build wants gear lanes (`physical`, `spell`, `healing`, `tank`) with a cert
 
 Severity for a pair of players:
 
-- `WILL` (red): main spec against main spec, in the same armor, or over cloth spell power.
-- `OFFSPEC` (orange): the same, but one side competes through an offspec.
-- `MIGHT` (yellow): an unclear spec, or only weapons, cloaks and jewelry at stake.
+- `WILL` (red, badge `MS`): main spec against main spec, in the same armor, or over cloth spell power.
+- `OFFSPEC` (orange, badge `OS`): the same, but one side competes through an offspec.
+- `MIGHT` (yellow, badge `?`): an unclear spec (`unsure`), a plate tank taking damage pieces (`tankDamage`), or only weapons, cloaks and jewelry at stake (`armor`).
+
+`tankDamage` is a separate reason from `unsure`, so turning off "Unknown specs" does not silence tank damage competition.
+
+`groupWhispers` (under "Where to warn", on by default) warns on whispers while leading a non-full party even when unlisted in the Group Finder.
 
 Decisions the owner made, in order. Do not reverse them without asking:
 
@@ -44,17 +48,13 @@ Decisions the owner made, in order. Do not reverse them without asking:
 WoW Forever is Classic gameplay (nine classes, level 60, three talent trees) on the modern retail API, Interface 16001, `WOW_PROJECT_ID` 18, codename Camelot.
 
 - Blizzard's UI source: the `forever` branch of github.com/Gethe/wow-ui-source. Check it before trusting memory of any Blizzard function.
-- The group finder is `Blizzard_GroupFinder_VanillaStyle` (load on demand), with `LFGBrowseFrame` and `LFGListingFrame`. It is not retail Premade Groups: there are no applicants. People list themselves, you browse, then whisper or invite. Hooks used: `LFGBrowseSearchEntry_Update`, `LFGBrowseSearchEntryTooltip_UpdateAndShow`, `C_PartyInfo.InviteUnit`.
+- The group finder is `Blizzard_GroupFinder_VanillaStyle` (load on demand), with `LFGBrowseFrame` and `LFGListingFrame`. It is not retail Premade Groups: there are no applicants. People list themselves, you browse, then whisper or invite. Hooks used: `LFGBrowseSearchEntry_Update`, `LFGBrowseSearchEntry_OnEnter`, `LFGBrowseSearchEntryTooltip_UpdateAndShow`, `C_PartyInfo.InviteUnit`.
 - Listing data comes from `C_LFGList.GetSearchResultInfo` and `GetSearchResultPlayerInfo` (class, level, `assignedRole`, `lfgRoles`). There is no talent or spec data for other players.
-- Specialization APIs report the whole class as one spec. The player's tree is read from `C_Traits` talent groups, ordered by `orderIndex`.
+- Specialization APIs report the whole class as one spec. The player's tree is read from `C_Traits` talent groups, ordered by `orderIndex` (verified in game for feral druid).
 - Values can be "secret" in restricted contexts. Pass anything read from the game through `plain()` before using it.
 
 ## Not yet verified in game
 
-- The owner has seen the settings panel and its "Check a player" subpage in game once. Column widths assume a canvas about 630 wide.
-- The orange dot is the yellow indicator texture tinted. It may read too close to yellow.
-- The dot sits at the top right of a listing row and may overlap other elements.
-- Tree detection once read a feral druid as restoration. It now sorts by `orderIndex`; the owner has not confirmed the fix. `/mittsoff status` prints the tree name the client reports.
 - Armor at 40 is confirmed only for warriors; the rest follows Classic.
 
 ## Releases

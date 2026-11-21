@@ -103,6 +103,20 @@ function R.build(class, key)
 	end
 end
 
+local ROLE_ORDER = { "TANK", "HEALER", "DAMAGER" }
+
+function R.classRoles(class)
+	local has = {}
+	for _, build in ipairs(R.BUILDS[class] or {}) do
+		has[build.role] = true
+	end
+	local roles = {}
+	for _, role in ipairs(ROLE_ORDER) do
+		if has[role] then roles[#roles + 1] = role end
+	end
+	return roles
+end
+
 -- The builds a profile plausibly plays as a main spec. A profile is
 -- { class, level, roles = { TANK = true, ... }, tree = 1..3, build = key };
 -- everything except class is optional.
@@ -144,7 +158,8 @@ local function on(opts, key)
 end
 
 -- lane -> MAIN, MAYBE or OFF for every lane the profile could roll on.
--- The player knows what they roll on, so their own offspec is never guessed.
+-- Also returns a set of lanes added only via build.also (such as plate tanks
+-- picking up damage pieces). The player's own offspec is never guessed.
 function R.wants(profile, opts)
 	local main = R.mainBuilds(profile)
 	local seen = {}
@@ -153,22 +168,25 @@ function R.wants(profile, opts)
 			seen[lane] = (seen[lane] or 0) + 1
 		end
 	end
-	local wants = {}
+	local wants, also = {}, {}
 	for lane, count in pairs(seen) do
 		wants[lane] = count == #main and R.MAIN or R.MAYBE
 	end
 	for _, build in ipairs(main) do
 		for _, lane in ipairs(on(opts, "tankDamage") and build.also or {}) do
-			wants[lane] = wants[lane] or R.MAYBE
+			if not wants[lane] then
+				wants[lane] = R.MAYBE
+				also[lane] = true
+			end
 		end
 	end
-	if profile.isSelf then return wants end
+	if profile.isSelf then return wants, also end
 	for _, build in ipairs(R.BUILDS[profile.class] or {}) do
 		for _, lane in ipairs(build.lanes) do
 			wants[lane] = wants[lane] or R.OFF
 		end
 	end
-	return wants
+	return wants, also
 end
 
 -- Lane of the first profile, lane of the second, and the name of what they
@@ -189,14 +207,16 @@ local ARMOR_RANK = { cloth = 1, leather = 2, mail = 3, plate = 4 }
 -- Result: { severity, lane, reason, offspec, lighter }.
 -- reason is "same" (same armor), "cloth" (spell power gear, whatever they
 -- wear), "wears" (the heavier wearer rolls on the armor of `lighter`),
--- "armor" (only weapons, cloaks and jewelry) or "unsure". offspec names the
--- profile competing through an offspec.
+-- "armor" (only weapons, cloaks and jewelry), "tankDamage" (plate tank
+-- taking damage pieces) or "unsure". offspec names the profile competing
+-- through an offspec.
 --
 -- matters(profile), when given, says whose losses count. Without it everyone's
 -- do. An offspec roll counts only when the one losing main spec gear to it
 -- matters, and rolling down only when the lighter wearer does.
 function R.compare(a, b, opts, matters)
-	local wantsA, wantsB = R.wants(a, opts), R.wants(b, opts)
+	local wantsA, alsoA = R.wants(a, opts)
+	local wantsB, alsoB = R.wants(b, opts)
 	local rankA, rankB = ARMOR_RANK[R.armor(a.class, a.level)], ARMOR_RANK[R.armor(b.class, b.level)]
 	if not rankA or not rankB then return nil end
 	local lighter = rankA ~= rankB and (rankA < rankB and a or b) or nil
@@ -212,7 +232,13 @@ function R.compare(a, b, opts, matters)
 			local found = { lane = matchup[3], weight = wa + wb, offspec = holder }
 			local worn = matchup[3] == "physical" or matchup[3] == "tank"
 			if not guess and (wa == R.MAYBE or wb == R.MAYBE) then
-				found.severity, found.reason = R.MIGHT, "unsure"
+				local aAlso = wa == R.MAYBE and alsoA[matchup[1]]
+				local bAlso = wb == R.MAYBE and alsoB[matchup[2]]
+				if (wa == R.MAIN or aAlso) and (wb == R.MAIN or bAlso) and (aAlso or bAlso) then
+					found.severity, found.reason = R.MIGHT, "tankDamage"
+				else
+					found.severity, found.reason = R.MIGHT, "unsure"
+				end
 			elseif not lighter then
 				found.severity, found.reason = R.WILL, "same"
 			elseif not worn and on(opts, "cloth") then
@@ -257,61 +283,98 @@ function R.evaluate(candidates, group, opts)
 	return found, found[1] and found[1].severity or nil
 end
 
-local LANE_TEXT = { physical = "physical gear", spell = "spell gear", healing = "healing gear", tank = "tank gear", spellpower = "spell power gear" }
+local LANE_TEXT = { physical = "physical", spell = "spell", healing = "healing", tank = "tank", spellpower = "spell power" }
 
--- One plain sentence for a conflict from R.evaluate.
-function R.describe(conflict)
-	local who = conflict.candidate.name or "They"
-	local other = conflict.member.isSelf and "you" or (conflict.member.name or "a party member")
-	local gear = LANE_TEXT[conflict.lane]
+local function offspecSuffix(conflict)
+	if not conflict.offspec then return "" end
+	if conflict.offspec == conflict.candidate then return " (their offspec)" end
+	if conflict.member.isSelf then return " (your offspec)" end
+	return (" (%s's offspec)"):format(conflict.member.name or "a party member")
+end
+
+-- Short reasoning for a conflict, suitable for tooltip highlights and chat.
+function R.reasonText(conflict)
+	local lane = LANE_TEXT[conflict.lane]
+	local suffix = offspecSuffix(conflict)
 	if conflict.reason == "same" or conflict.reason == "cloth" or conflict.reason == "wears" then
 		local wearer = conflict.lighter or conflict.member
 		local armor = conflict.reason == "cloth" and "cloth" or R.armor(wearer.class, wearer.level)
-		local text = ("%s will compete with %s for %s %s"):format(who, other, armor, gear)
-		if not conflict.offspec then return text end
-		return text .. (conflict.offspec == conflict.candidate and " (their offspec)" or (" (%s's offspec)"):format(other))
+		return ("%s %s%s"):format(armor, lane, suffix)
 	elseif conflict.reason == "armor" then
-		return ("%s might compete with %s for %s (weapons, cloaks, jewelry)"):format(who, other, gear)
+		return "weapons, cloaks, jewelry" .. suffix
+	elseif conflict.reason == "tankDamage" then
+		return lane .. " (tank damage)"
 	end
-	return ("%s might compete with %s for %s, depending on spec"):format(who, other, gear)
+	return lane .. " (spec unknown)"
 end
 
--- What is at stake, in a few words, for a list: "leather physical, offspec".
+-- One concise line for a conflict from R.evaluate.
+function R.describe(conflict)
+	local who = conflict.candidate.name or "They"
+	local other = conflict.member.isSelf and "you" or (conflict.member.name or "a party member")
+	return ("%s vs %s: %s"):format(who, other, R.reasonText(conflict))
+end
+
+-- What is at stake, in a few words, for a list: "leather physical, OS".
 function R.brief(conflict)
-	if conflict.reason == "armor" then return "weapons, cloaks, jewelry" end
-	if conflict.reason == "unsure" then return "depends on spec" end
+	if conflict.reason == "armor" then return conflict.offspec and "weapons, jewelry, OS" or "weapons, cloaks, jewelry" end
+	if conflict.reason == "tankDamage" then return "tank damage" end
+	if conflict.reason == "unsure" then return "spec unknown" end
 	local wearer = conflict.lighter or conflict.member
 	local armor = conflict.reason == "cloth" and "cloth" or R.armor(wearer.class, wearer.level)
-	return ("%s %s%s"):format(armor, (LANE_TEXT[conflict.lane]:gsub(" gear$", "")), conflict.offspec and ", offspec" or "")
+	return ("%s %s%s"):format(armor, LANE_TEXT[conflict.lane], conflict.offspec and ", OS" or "")
 end
 
 local ROLE_WORDS = {
-	tank = "TANK", tanking = "TANK", bear = "TANK",
-	heal = "HEALER", heals = "HEALER", healer = "HEALER", healing = "HEALER", resto = "HEALER", holy = "HEALER",
+	tank = "TANK", tanking = "TANK", bear = "TANK", prot = "TANK", protection = "TANK", mt = "TANK", ot = "TANK", offtank = "TANK",
+	heal = "HEALER", heals = "HEALER", healer = "HEALER", healing = "HEALER", resto = "HEALER", restoration = "HEALER",
+	holy = "HEALER", disc = "HEALER", discipline = "HEALER", hpal = "HEALER", hpala = "HEALER", hpriest = "HEALER",
+	rdruid = "HEALER", rsham = "HEALER", rshaman = "HEALER",
 	dps = "DAMAGER", dd = "DAMAGER", damage = "DAMAGER",
-	ret = "DAMAGER", enh = "DAMAGER", enhance = "DAMAGER", enhancement = "DAMAGER", ele = "DAMAGER", elemental = "DAMAGER",
-	shadow = "DAMAGER", fury = "DAMAGER", arms = "DAMAGER", balance = "DAMAGER", boomkin = "DAMAGER", moonkin = "DAMAGER",
-	cat = "DAMAGER", feral = "DAMAGER",
+	ret = "DAMAGER", retri = "DAMAGER", retribution = "DAMAGER",
+	enh = "DAMAGER", enha = "DAMAGER", enhance = "DAMAGER", enhancement = "DAMAGER",
+	ele = "DAMAGER", elemental = "DAMAGER",
+	shadow = "DAMAGER", spriest = "DAMAGER",
+	fury = "DAMAGER", arms = "DAMAGER",
+	balance = "DAMAGER", boomkin = "DAMAGER", boomie = "DAMAGER", boomy = "DAMAGER", moonkin = "DAMAGER",
+	cat = "DAMAGER", kitty = "DAMAGER", feral = "DAMAGER",
 }
 local BUILD_WORDS = {
-	SHAMAN = { enh = "enh", enhance = "enh", enhancement = "enh", ele = "ele", elemental = "ele" },
-	DRUID = { balance = "balance", boomkin = "balance", moonkin = "balance", cat = "cat", bear = "bear" },
+	WARRIOR = { arms = "dps", fury = "dps", prot = "tank", protection = "tank" },
+	PALADIN = { holy = "holy", hpal = "holy", hpala = "holy", prot = "tank", protection = "tank", ret = "ret", retri = "ret", retribution = "ret" },
+	PRIEST = { disc = "heal", discipline = "heal", holy = "heal", hpriest = "heal", shadow = "shadow", spriest = "shadow" },
+	SHAMAN = { ele = "ele", elemental = "ele", enh = "enh", enha = "enh", enhancement = "enh", resto = "resto", restoration = "resto", rsham = "resto", rshaman = "resto" },
+	DRUID = { balance = "balance", boomkin = "balance", boomie = "balance", boomy = "balance", moonkin = "balance", cat = "cat", kitty = "cat", bear = "bear", resto = "resto", restoration = "resto", rdruid = "resto" },
 }
 
--- Reads role and spec words out of a whisper such as "enh shaman lfg".
+-- Reads role and spec words out of a whisper or comment such as "enh shaman lfg".
 -- Returns roles (set or nil) and a build key (or nil) for the given class.
 function R.hints(text, class)
 	local roles, build
+	local sawFeral, sawExplicitDamager = false, false
 	for word in tostring(text or ""):lower():gmatch("%a+") do
 		local role = ROLE_WORDS[word]
 		if role then
 			roles = roles or {}
 			roles[role] = true
+			if word == "feral" then
+				sawFeral = true
+			elseif role == "DAMAGER" then
+				sawExplicitDamager = true
+			end
 		end
 		build = build or (BUILD_WORDS[class] and BUILD_WORDS[class][word])
 	end
-	-- "feral tank" names two roles; the explicit tank wins.
-	if roles and roles.TANK and roles.DAMAGER and not roles.HEALER then roles.DAMAGER = nil end
+	if class == "DRUID" and sawFeral and not build then
+		if roles and roles.TANK then
+			if not sawExplicitDamager then
+				build = "bear"
+				roles.DAMAGER = nil
+			end
+		else
+			build = "cat"
+		end
+	end
 	return roles, build
 end
 
